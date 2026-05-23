@@ -219,7 +219,12 @@ app.post('/api/semapach', async (resBody, res) => {
 
   } catch (error) {
     console.error('[Semapach Error]:', error.message);
-    return res.status(500).json({ success: false, message: 'Error de conexión con el servidor de Semapach.' });
+    return res.status(500).json({
+      success: false,
+      message: `Error de conexión con el servidor de Semapach: ${error.message}`,
+      code: error.code,
+      response: error.response ? { status: error.response.status, data: error.response.data } : null
+    });
   }
 });
 
