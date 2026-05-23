@@ -382,3 +382,6 @@ app.listen(PORT, () => {
   console.log(`Servidor de Recibos ejecutándose en http://localhost:${PORT}`);
   console.log(`=======================================================`);
 });
+
+module.exports = app;
+
