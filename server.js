@@ -4,7 +4,7 @@ const cheerio = require('cheerio');
 const cors = require('cors');
 const path = require('path');
 const querystring = require('querystring');
-const { PDFParse } = require('pdf-parse');
+const pdf = require('pdf-parse');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -326,8 +326,7 @@ app.post('/api/electrodunas/download', async (req, res) => {
       
       let amount = '0.00';
       try {
-        const parser = new PDFParse({ data: response.data });
-        const parsedPdf = await parser.getText();
+        const parsedPdf = await pdf(response.data);
         const cleanText = parsedPdf.text.replace(/\s+/g, ' ');
         console.log(`[PDF Parser] Extracted raw text length: ${cleanText.length} characters.`);
         console.log(`[PDF Parser] First 500 chars of extracted text: ${cleanText.substring(0, 500)}`);
