@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ServiDescarga | Gestor Multifamiliar de Servicios</title>
+  <meta name="description" content="Consulta rápida y descargas de recibos de servicios para Casa, Abuelos y Rancho.">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Main Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- hCaptcha API -->
+  <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+
+  <!-- jsPDF Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+  
+  <!-- Ambient background mesh gradients -->
+  <div class="mesh-gradient-bg"></div>
+  <div class="mesh-glow mesh-glow-cyan"></div>
+  <div class="mesh-glow mesh-glow-amber"></div>
+
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-icon">
+          <i class="fa-solid fa-file-invoice-dollar"></i>
+        </div>
+        <div class="logo-text">
+          <h1>Servi<span>Descarga</span></h1>
+          <p>Gestor unificado de recibos de servicios</p>
+        </div>
+      </div>
+      
+      <!-- Navigation Tabs -->
+      <nav class="app-nav">
+        <button class="nav-tab active" data-tab="tab-properties">
+          <i class="fa-solid fa-house-user"></i> Mis Propiedades
+        </button>
+        <button class="nav-tab" data-tab="tab-manual">
+          <i class="fa-solid fa-magnifying-glass"></i> Consulta Manual
+        </button>
+      </nav>
+    </header>
+
+    <!-- ================= VIEW 1: MY PROPERTIES (DEFAULT) ================= -->
+    <div id="tab-properties" class="tab-content">
+      <!-- Debt Summary Banner -->
+      <section class="summary-banner glass-panel">
+        <div class="summary-details" style="display: flex; flex-direction: column; gap: 0.5rem; width: 100%; max-width: 70%;">
+          <span class="summary-subtitle">Resumen de Deudas Acumuladas</span>
+          <div class="summary-metrics" style="display: flex; flex-wrap: wrap; gap: 1.5rem 3rem; margin: 0.5rem 0;">
+            <div class="metric-item">
+              <span class="metric-label" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;"><i class="fa-solid fa-droplet" style="color: var(--water-primary);"></i> Agua (Semapach):</span>
+              <h2 class="summary-title" style="font-size: 1.4rem; font-weight: 800; color: var(--text-dark);" id="water-summary-debt">S/ 0.00</h2>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;"><i class="fa-solid fa-bolt" style="color: var(--power-primary);"></i> Luz (Electrodunas):</span>
+              <h2 class="summary-title" style="font-size: 1.4rem; font-weight: 800; color: var(--text-dark);" id="power-summary-debt">S/ 0.00</h2>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;"><i class="fa-solid fa-wifi" style="color: #8B5CF6;"></i> Internet/Cable (Fijos):</span>
+              <h2 class="summary-title" style="font-size: 1.4rem; font-weight: 800; color: var(--text-dark);" id="fixed-summary-debt">S/ 0.00</h2>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;"><i class="fa-solid fa-file-invoice-dollar" style="color: var(--success);"></i> Total Deuda General:</span>
+              <h2 class="summary-title" style="font-size: 1.6rem; font-weight: 800; color: var(--success);" id="total-summary-debt">S/ 0.00</h2>
+            </div>
+          </div>
+          <p class="summary-desc">Se calcula consultando el agua y analizando los archivos PDF descargados de luz.</p>
+        </div>
+        <div class="summary-actions">
+          <button id="btn-refresh-all" class="btn btn-water btn-shine">
+            <span>Actualizar Todo</span>
+            <i class="fa-solid fa-rotate"></i>
+          </button>
+        </div>
+      </section>
+
+      <!-- Properties Grid -->
+      <div class="properties-grid" id="properties-container">
+        <!-- Property Cards (Casa, Abuelos, Rancho) will be dynamically generated here -->
+      </div>
+
+      <!-- Totals Section -->
+      <div class="totals-row" style="display: flex; gap: 2rem; flex-wrap: wrap; margin-top: 1rem; width: 100%;">
+        <div class="total-panel glass-panel" style="flex: 1; min-width: 300px; padding: 1.5rem 1.75rem; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--water-primary); transition: var(--transition-smooth);">
+          <div class="card-glow" style="position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: var(--water-gradient);"></div>
+          <div>
+            <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-dark); margin-bottom: 0.15rem;">Total Casa</h3>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Agua + Luz + Internet</span>
+          </div>
+          <h2 id="total-casa-value" style="font-size: 1.7rem; font-weight: 800; color: var(--water-primary);">S/ 0.00</h2>
+        </div>
+
+        <div class="total-panel glass-panel" style="flex: 1.5; min-width: 300px; padding: 1.5rem 1.75rem; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--power-primary); transition: var(--transition-smooth);">
+          <div class="card-glow" style="position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: var(--power-gradient);"></div>
+          <div>
+            <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-dark); margin-bottom: 0.15rem;">Total Abuelos + Rancho</h3>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Abuelos (Agua + Luz + Cable) + Rancho (Agua)</span>
+          </div>
+          <h2 id="total-abuelos-rancho-value" style="font-size: 1.7rem; font-weight: 800; color: var(--power-primary);">S/ 0.00</h2>
+        </div>
+      </div>
+
+      <!-- Download Report Section -->
+      <div class="download-report-row" style="display: flex; justify-content: center; margin-top: 2rem; width: 100%;">
+        <button id="btn-download-report" class="btn btn-shine" style="background: linear-gradient(135deg, var(--water-secondary) 0%, var(--power-secondary) 100%); color: #FFFFFF; padding: 0.95rem 2.5rem; font-size: 1.05rem; border-radius: 30px; box-shadow: 0 8px 24px rgba(0, 102, 255, 0.25); display: flex; align-items: center; gap: 0.75rem; border: none; font-weight: 700; cursor: pointer; transition: var(--transition-smooth); position: relative; overflow: hidden; text-decoration: none;">
+          <span>Descargar Reporte PDF</span>
+          <i class="fa-solid fa-file-pdf"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- ================= VIEW 2: MANUAL SEARCH ================= -->
+    <div id="tab-manual" class="tab-content hidden">
+      <main class="dashboard-grid">
+        <!-- ================= SEMAPACH WATER CARD ================= -->
+        <section class="service-card glass-panel" id="card-semapach">
+          <div class="card-glow"></div>
+          <div class="card-header">
+            <div class="icon-wrapper water-icon">
+              <i class="fa-solid fa-droplet animate-pulse"></i>
+            </div>
+            <div class="header-titles">
+              <h2>EPS Semapach</h2>
+              <p>Servicio de Agua Potable - Chincha</p>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <form id="form-semapach" class="interactive-form">
+              <div class="input-group">
+                <label for="semapach-code">Código de Suministro</label>
+                <div class="input-wrapper">
+                  <i class="fa-solid fa-hashtag input-icon"></i>
+                  <input type="number" id="semapach-code" name="codigo" required placeholder="Ej: 22203" min="1" max="99999999">
+                </div>
+                <span class="helper-text">Ubícalo en la parte superior central de tu recibo físico.</span>
+              </div>
+
+              <div class="options-row">
+                <label class="checkbox-container">
+                  <input type="checkbox" id="save-semapach" checked>
+                  <span class="checkmark"></span>
+                  Recordar código
+                </label>
+              </div>
+
+              <button type="submit" class="btn btn-water btn-shine" id="btn-submit-semapach">
+                <span>Consultar Deuda</span>
+                <i class="fa-solid fa-magnifying-glass"></i>
+              </button>
+            </form>
+
+            <!-- Results Container -->
+            <div class="results-container" id="results-semapach">
+              <!-- Empty state -->
+              <div class="state-empty">
+                <i class="fa-solid fa-circle-info"></i>
+                <p>Introduce tu código de suministro para ver el historial y descargar recibos.</p>
+              </div>
+
+              <!-- Loading skeleton -->
+              <div class="state-loading hidden">
+                <div class="skeleton skeleton-text"></div>
+                <div class="skeleton skeleton-row"></div>
+                <div class="skeleton skeleton-row"></div>
+                <div class="skeleton skeleton-row"></div>
+              </div>
+
+              <!-- Error State -->
+              <div class="state-error hidden">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <p class="error-msg">Ocurrió un error al realizar la consulta.</p>
+              </div>
+
+              <!-- Data table -->
+              <div class="state-data hidden">
+                <div class="client-info-panel" id="semapach-info-panel">
+                  <div class="info-row">
+                    <span class="info-label"><i class="fa-solid fa-user"></i> Titular:</span>
+                    <span class="info-value" id="semapach-titular">-</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label"><i class="fa-solid fa-location-dot"></i> Dirección:</span>
+                    <span class="info-value" id="semapach-direccion">-</span>
+                  </div>
+                </div>
+
+                <div class="data-header">
+                  <h3>Último Recibo Disponible</h3>
+                  <span class="receipt-count" id="semapach-count" style="display: none;">0 recibos</span>
+                </div>
+                
+                <div class="receipts-list" id="semapach-list">
+                  <!-- Receipt items will be injected here -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= ELECTRODUNAS POWER CARD ================= -->
+        <section class="service-card glass-panel" id="card-electrodunas">
+          <div class="card-glow"></div>
+          <div class="card-header">
+            <div class="icon-wrapper power-icon">
+              <i class="fa-solid fa-bolt animate-bounce"></i>
+            </div>
+            <div class="header-titles">
+              <h2>Electro Dunas</h2>
+              <p>Servicio de Energía Eléctrica</p>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <form id="form-electrodunas" class="interactive-form">
+              <div class="input-group">
+                <label for="electrodunas-nis">Número de Suministro (NIS)</label>
+                <div class="input-wrapper">
+                  <i class="fa-solid fa-bolt input-icon"></i>
+                  <input type="text" id="electrodunas-nis" name="code" required placeholder="Ej: 4125896" pattern="[0-9]+">
+                </div>
+                <span class="helper-text">Ubícalo en la parte superior derecha de tu recibo físico.</span>
+              </div>
+
+              <div class="options-row">
+                <label class="checkbox-container">
+                  <input type="checkbox" id="save-electrodunas" checked>
+                  <span class="checkmark"></span>
+                  Recordar NIS
+                </label>
+              </div>
+
+              <!-- Captcha Section -->
+              <div class="captcha-box">
+                <div class="captcha-header">
+                  <i class="fa-solid fa-shield-halved"></i>
+                  <span>Verificación de Seguridad</span>
+                </div>
+                <!-- hCaptcha Widget container -->
+                <div class="captcha-wrapper">
+                  <div class="h-captcha" id="hcaptcha-widget" data-sitekey="a2f0da4c-6534-4efe-97ba-e0964928a65a"></div>
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-power btn-shine" id="btn-submit-electrodunas">
+                <span>Descargar Recibo PDF</span>
+                <i class="fa-solid fa-download"></i>
+              </button>
+            </form>
+
+            <!-- Results Container -->
+            <div class="results-container" id="results-electrodunas">
+              <!-- Empty state -->
+              <div class="state-empty">
+                <i class="fa-solid fa-shield-check"></i>
+                <p>Resuelve la verificación de seguridad para descargar tu último recibo directamente.</p>
+              </div>
+
+              <!-- Loading skeleton -->
+              <div class="state-loading hidden">
+                <div class="loading-spinner">
+                  <div class="spinner-circle"></div>
+                  <p>Procesando descarga de recibo. Por favor, espere...</p>
+                </div>
+              </div>
+
+              <!-- Success State -->
+              <div class="state-success hidden">
+                <i class="fa-solid fa-circle-check"></i>
+                <p>¡Recibo descargado correctamente!</p>
+                <button class="btn btn-secondary" id="btn-retry-electrodunas">Consultar Otro</button>
+              </div>
+
+              <!-- Error State -->
+              <div class="state-error hidden">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <p class="error-msg">Ocurrió un error al procesar el captcha o descargar el recibo.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ================= SEQUENTIAL CAPTCHA MODAL ================= -->
+    <div class="modal-overlay hidden" id="modal-captcha-queue">
+      <div class="modal-panel glass-panel">
+        <div class="modal-header">
+          <div class="modal-title-area">
+            <h3><i class="fa-solid fa-shield-halved"></i> Verificación requerida</h3>
+            <p id="captcha-queue-subtitle">Resolviendo recibo de luz (1 de 2)</p>
+          </div>
+          <span class="badge badge-power" id="captcha-queue-badge">Casa</span>
+        </div>
+        <div class="modal-body">
+          <p class="modal-instructions">
+            Para descargar el recibo de Luz de <strong id="captcha-queue-name">Casa</strong> (NIS: <span id="captcha-queue-nis"></span>), por favor resuelve el captcha de seguridad a continuación:
+          </p>
+          
+          <div class="captcha-wrapper">
+            <!-- Dynamically generated container for hcaptcha -->
+            <div id="modal-captcha-widget-container"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btn-cancel-captcha-queue">
+            <span>Cancelar</span>
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="app-footer">
+      <p>&copy; 2026 Gestor de Servicios. Desarrollado localmente de forma segura y privada.</p>
+      <div class="footer-links">
+        <a href="https://www.epssemapach.com.pe/consultaweb/" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-link"></i> Portal Semapach</a>
+        <a href="https://www.electrodunas.com/ConsultaRecibo" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-link"></i> Portal Electrodunas</a>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Client-side script -->
+  <script src="app.js"></script>
+</body>
+</html>
