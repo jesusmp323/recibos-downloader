@@ -17,6 +17,11 @@ app.use(express.urlencoded({ extended: true }));
 // Serve frontend static files
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/api/ping', (req, res) => {
+  res.json({ success: true, local: true });
+});
+
+
 // Helper to clean and format cookies for the Cookie header
 function formatCookieHeader(cookieHeaders) {
   if (!cookieHeaders) return '';
