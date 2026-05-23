@@ -1,5 +1,30 @@
 document.addEventListener('DOMContentLoaded', () => {
   // ----------------------------------------------------
+  // LOCAL SERVER AUTO-DETECTION
+  // ----------------------------------------------------
+  let apiBase = '';
+
+  async function checkLocalServer() {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    try {
+      const res = await fetch('http://localhost:3000/api/ping', {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      const data = await res.json();
+      if (data && data.local) {
+        apiBase = 'http://localhost:3000';
+        console.log('Servidor local detectado en http://localhost:3000. Redirigiendo consultas...');
+      }
+    } catch (err) {
+      console.log('Servidor local no detectado. Usando Vercel.', err.message);
+    }
+  }
+
+  checkLocalServer();
+
+  // ----------------------------------------------------
   // NAVIGATION TABS HANDLING
   // ----------------------------------------------------
   const tabs = document.querySelectorAll('.nav-tab');
@@ -89,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
     switchState(resultsSemapach, 'loading');
 
     try {
-      const response = await fetch('/api/semapach', {
+      const response = await fetch(`${apiBase}/api/semapach`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ codigo })
@@ -170,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
     switchState(resultsElectrodunas, 'loading');
 
     try {
-      const initRes = await fetch('/api/electrodunas/init');
+      const initRes = await fetch(`${apiBase}/api/electrodunas/init`);
       const initData = await initRes.json();
 
       if (!initData.success) {
@@ -179,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      const downloadRes = await fetch('/api/electrodunas/download', {
+      const downloadRes = await fetch(`${apiBase}/api/electrodunas/download`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -510,7 +535,7 @@ document.addEventListener('DOMContentLoaded', () => {
       pdfBtn.classList.add('hidden');
 
       try {
-        const res = await fetch('/api/semapach', {
+        const res = await fetch(`${apiBase}/api/semapach`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ codigo: prop.agua })
@@ -659,7 +684,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       // Fetch session cookies and Anti-forgery token from backend
-      const initRes = await fetch('/api/electrodunas/init');
+      const initRes = await fetch(`${apiBase}/api/electrodunas/init`);
       const initData = await initRes.json();
 
       if (!initData.success) {
@@ -667,7 +692,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Submit Download POST
-      const downloadRes = await fetch('/api/electrodunas/download', {
+      const downloadRes = await fetch(`${apiBase}/api/electrodunas/download`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
