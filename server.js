@@ -5,7 +5,6 @@ const cors = require('cors');
 const path = require('path');
 const querystring = require('querystring');
 const pdf = require('pdf-parse');
-const puppeteer = require('puppeteer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -51,97 +50,82 @@ app.post('/api/semapach', async (req, res) => {
     return res.status(400).json({ success: false, message: 'El código de suministro es requerido.' });
   }
 
-  console.log(`[Semapach] Consultando código: ${codigo} vía Puppeteer...`);
+  console.log(`[Semapach] Consultando código de suministro: ${codigo}`);
   const SEMAPACH_URL = 'https://www.epssemapach.com.pe/consultaweb/';
-  let browser = null;
 
   try {
-    // Lanzar Chrome real en modo headless
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-blink-features=AutomationControlled'
-      ]
+    const postData = querystring.stringify({
+      codigo: codigo,
+      'btn-login': 'Consultar'
     });
 
-    const page = await browser.newPage();
-
-    // Simular un navegador real
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-PE,es;q=0.9' });
-
-    // Ocultar que es Puppeteer (evitar detección bot)
-    await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    // POST al login capturando cookies y sin seguir redirecciones
+    let response = await axios.post(SEMAPACH_URL, postData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Origin': 'https://www.epssemapach.com.pe',
+        'Referer': SEMAPACH_URL
+      },
+      maxRedirects: 0,
+      validateStatus: s => s >= 200 && s < 400,
+      timeout: 20000
     });
 
-    // PASO 1: Abrir la página de login
-    console.log('[Semapach] PASO 1 - Abriendo página de login...');
-    await page.goto(SEMAPACH_URL, { waitUntil: 'networkidle2', timeout: 30000 });
+    let html = response.data;
+    const cookies = response.headers['set-cookie'] || [];
+    const sessionCookie = formatCookieHeader(cookies);
 
-    // PASO 2: Llenar el campo de código y enviar el formulario
-    console.log('[Semapach] PASO 2 - Enviando código de suministro...');
-    await page.waitForSelector('input[name="codigo"]', { timeout: 10000 });
-    await page.type('input[name="codigo"]', codigo, { delay: 50 });
-    await page.click('input[name="btn-login"], button[type="submit"], input[type="submit"]');
+    // Si redirige a home.php, seguimos con las cookies de sesión
+    if (response.status === 302 || (response.headers.location && response.headers.location.includes('home.php'))) {
+      const homeUrl = new URL(response.headers.location, SEMAPACH_URL).toString();
+      const homeResponse = await axios.get(homeUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Cookie': sessionCookie
+        },
+        timeout: 20000
+      });
+      html = homeResponse.data;
+    }
 
-    // PASO 3: Esperar a que cargue la respuesta (home.php o error)
-    console.log('[Semapach] PASO 3 - Esperando respuesta del servidor...');
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {
-      // Si no hay navegación, puede que el error se muestre en la misma página
-      console.log('[Semapach] Sin navegación detectada, revisando página actual...');
-    });
-
-    // Obtener el HTML final de la página
-    const html = await page.content();
-    const currentUrl = page.url();
-    console.log(`[Semapach] URL actual: ${currentUrl}`);
-
-    await browser.close();
-    browser = null;
-
-    // PASO 4: Parsear los datos del HTML
     const $ = cheerio.load(html);
 
-    // Verificar si hay mensaje de error
-    const bodyText = $('body').text().toLowerCase();
-    const errorBlock = $('.notification_block, .error, .alert-danger, .alert-warning');
+    // Verificar errores
+    const errorBlock = $('.notification_block, .error, .alert-danger');
     if (errorBlock.length > 0) {
       const errorText = errorBlock.text().replace(/\s+/g, ' ').trim();
-      if (errorText.length > 0) {
+      if (errorText.toLowerCase().includes('sin informacion') || errorText.toLowerCase().includes('error')) {
         return res.json({ success: false, message: `Semapach: ${errorText}` });
       }
     }
-    if (bodyText.includes('sin informacion') || bodyText.includes('sin información') || bodyText.includes('codigo incorrecto')) {
-      return res.json({ success: false, message: 'Semapach: Código de suministro sin información o incorrecto.' });
-    }
 
     // Extraer titular y dirección
-    let titular = $('#propietario').val() || $('input[name="propietario"]').val() || '';
-    let direccion = $('#tdir').val() || $('input[name="tdir"]').val() || '';
+    let titular = $('#propietario').val();
+    let direccion = $('#tdir').val();
     titular = fixDoubleUtf8(titular);
     direccion = fixDoubleUtf8(direccion);
-    console.log(`[Semapach] Titular: "${titular}", Dirección: "${direccion}"`);
 
-    // Buscar la tabla de recibos/deudas
+    // Buscar tabla de deudas
     let targetTable = null;
     let maxCols = 0;
     $('table').each((i, tableEl) => {
-      const headerText = $(tableEl).find('tr').first().find('th, td').map((j, c) => $(c).text().toLowerCase().trim()).get().join(' ');
-      const isDebtTable = headerText.includes('periodo') || headerText.includes('período') ||
-                          headerText.includes('recibo') || headerText.includes('mes') ||
-                          headerText.includes('vence') || headerText.includes('importe');
-      const colCount = $(tableEl).find('tr').first().find('th, td').length;
-      if (isDebtTable && colCount > maxCols) {
-        maxCols = colCount;
+      const headers = [];
+      $(tableEl).find('tr').first().find('th, td').each((idx, cel) => {
+        headers.push($(cel).text().toLowerCase().trim());
+      });
+      const isDebtTable = headers.some(h => h.includes('periodo') || h.includes('período') || h.includes('recibo'));
+      if (isDebtTable && headers.length > maxCols) {
+        maxCols = headers.length;
         targetTable = $(tableEl);
       }
     });
 
     if (!targetTable) {
+      const pageText = $('body').text();
+      if (pageText.includes('sin Informacion') || pageText.includes('sin informacion')) {
+        return res.json({ success: false, message: 'Semapach: Código de suministro sin información o incorrecto.' });
+      }
       if (titular) {
         return res.json({
           success: true,
@@ -151,14 +135,16 @@ app.post('/api/semapach', async (req, res) => {
           message: 'No se registran recibos pendientes de pago.'
         });
       }
-      return res.json({ success: false, message: 'Semapach: No se encontraron datos. Verifique el código de suministro.' });
+      return res.json({ success: false, message: 'Semapach: No se encontraron datos para este código de suministro.' });
     }
 
-    // Extraer filas
     const rows = [];
-    targetTable.find('tr').each((i, rowEl) => {
-      const cells = $(rowEl).find('td, th').map((j, cell) => $(cell).text().replace(/\s+/g, ' ').trim()).get();
-      if (cells.length > 0) rows.push(cells);
+    targetTable.find('tr').each((rowIndex, rowEl) => {
+      const cells = [];
+      $(rowEl).find('th, td').each((colIndex, cellEl) => {
+        cells.push($(cellEl).text().replace(/\s+/g, ' ').trim());
+      });
+      rows.push(cells);
     });
 
     if (rows.length <= 1) {
@@ -171,19 +157,17 @@ app.post('/api/semapach', async (req, res) => {
       });
     }
 
-    // Mapear columnas dinámicamente
-    const colHeaders = rows[0].map(h => h.toLowerCase());
-    const mesIdx   = colHeaders.findIndex(h => h.includes('mes') || h.includes('periodo') || h.includes('fecha'));
-    const reciboIdx= colHeaders.findIndex(h => h.includes('recibo') || h.includes('nº') || h.includes('numero'));
-    const venceIdx = colHeaders.findIndex(h => h.includes('vence') || h.includes('vencimiento') || h.includes('emision') || h.includes('emisión'));
-    const importeIdx=colHeaders.findIndex(h => h.includes('importe') || h.includes('monto') || h.includes('deuda') || h.includes('total') || h.includes('pagar'));
-    const consumoIdx=colHeaders.findIndex(h => h.includes('consumo') || h.includes('m3'));
-    const getCell = (row, idx, fallback) => (idx >= 0 && row[idx]) ? row[idx] : fallback;
+    const headers = rows[0].map(h => h.toLowerCase());
+    const mesIndex       = headers.findIndex(h => h.includes('mes') || h.includes('periodo') || h.includes('fecha'));
+    const reciboIndex    = headers.findIndex(h => h.includes('recibo') || h.includes('documento') || h.includes('nº') || h.includes('número') || h.includes('numero'));
+    const vencimientoIndex = headers.findIndex(h => h.includes('vence') || h.includes('vencimiento') || h.includes('emisión') || h.includes('emision'));
+    const importeIndex   = headers.findIndex(h => h.includes('importe') || h.includes('monto') || h.includes('deuda') || h.includes('total') || h.includes('pagar'));
+    const consumoIndex   = headers.findIndex(h => h.includes('consumo') || h.includes('m3') || h.includes('metros'));
 
     let defaultPdfUrl = null;
     $('a').each((i, linkEl) => {
-      const href = $(linkEl).attr('href') || '';
-      if (href.includes('recibo.php') || href.includes('pdf/recibos')) {
+      const href = $(linkEl).attr('href');
+      if (href && (href.includes('recibo.php') || href.includes('pdf/recibos'))) {
         defaultPdfUrl = new URL(href, SEMAPACH_URL).toString();
       }
     });
@@ -191,25 +175,31 @@ app.post('/api/semapach', async (req, res) => {
     const receipts = [];
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      if (row.length < 2 || row.join('').toLowerCase().includes('total')) continue;
+      if (row.length < 3 || row.some(cell => cell.toLowerCase().includes('total'))) continue;
 
-      const mes        = getCell(row, mesIdx,    row[0] || 'N/A');
-      const recibo     = getCell(row, reciboIdx, row[1] || 'N/A');
-      const vencimiento= getCell(row, venceIdx,  row[2] || 'N/A');
-      const importe    = getCell(row, importeIdx, row[row.length - 1] || '0.00');
-      const consumo    = getCell(row, consumoIdx, 'N/A');
+      const getVal = (idx, fallback) => (idx !== -1 && row[idx]) ? row[idx] : fallback;
+
+      const mes        = getVal(mesIndex !== -1 ? mesIndex : 1, 'N/A');
+      const recibo     = getVal(reciboIndex !== -1 ? reciboIndex : 2, 'N/A');
+      const vencimiento= getVal(vencimientoIndex !== -1 ? vencimientoIndex : 3, 'N/A');
+      const importe    = getVal(importeIndex !== -1 ? importeIndex : 7, '0.00');
+      const consumo    = getVal(consumoIndex !== -1 ? consumoIndex : 6, 'N/A');
 
       let pdfUrl = null;
-      const periodMatch = mes.match(/([a-zA-Z\u00C0-\u017F]+)\s*[-/]\s*(\d{4})/);
+      const periodMatch = mes.match(/([a-zA-Z\u00C0-\u017F]+)\s*-\s*(\d{4})/);
       if (periodMatch) {
         const monthName = periodMatch[1].toLowerCase().trim();
         const year = periodMatch[2];
-        const monthMap = { enero:'01', febrero:'02', marzo:'03', abril:'04', mayo:'05', junio:'06',
-                           julio:'07', agosto:'08', septiembre:'09', octubre:'10', noviembre:'11', diciembre:'12' };
+        const monthMap = {
+          enero:'01', febrero:'02', marzo:'03', abril:'04', mayo:'05', junio:'06',
+          julio:'07', agosto:'08', septiembre:'09', octubre:'10', noviembre:'11', diciembre:'12'
+        };
         const monthNum = monthMap[monthName];
-        if (monthNum) pdfUrl = `${SEMAPACH_URL}pdf/recibos/recibo.php?codcliente=${codigo}&anio=${year}&mes=${monthNum}`;
+        if (monthNum) {
+          pdfUrl = `${SEMAPACH_URL}pdf/recibos/recibo.php?codcliente=${codigo}&anio=${year}&mes=${monthNum}`;
+        }
       }
-      if (!pdfUrl && i === 1) pdfUrl = defaultPdfUrl;
+      if (i === 1 && !pdfUrl) pdfUrl = defaultPdfUrl;
 
       receipts.push({ mes, recibo, vencimiento, importe, consumo, pdfUrl });
     }
@@ -222,15 +212,15 @@ app.post('/api/semapach', async (req, res) => {
     });
 
   } catch (error) {
-    if (browser) await browser.close().catch(() => {});
     console.error('[Semapach Error]:', error.message);
     return res.status(500).json({
       success: false,
-      message: `Error al consultar Semapach: ${error.message}`,
+      message: `Error de conexión con Semapach: ${error.message}`,
       code: error.code
     });
   }
 });
+
 
 
 // ----------------------------------------------------
